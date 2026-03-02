@@ -458,6 +458,14 @@ def main() -> None:
         .option("startingOffsets", "latest")
         .option("failOnDataLoss", "false")
         .option("maxOffsetsPerTrigger", 50_000)
+        # Force the Kafka consumer to refresh partition metadata every 30 s
+        # instead of the default 5 minutes.  This is what causes
+        # "This server does not host this topic-partition" to self-heal quickly
+        # if a restart races with partition-leader election.
+        .option("kafka.metadata.max.age.ms", "30000")
+        # Give the broker more time to respond during startup / leader election
+        .option("kafka.request.timeout.ms", "60000")
+        .option("kafka.socket.connection.setup.timeout.max.ms", "30000")
         .load()
     )
 

@@ -39,6 +39,13 @@ spark-logs:
 spark-restart:
 	docker compose restart spark
 
+## Wipe Spark checkpoints so the job resumes from Kafka "latest" on next start.
+## Run this when you see "This server does not host this topic-partition" and
+## a simple restart didn't fix it (usually after docker compose down -v).
+spark-clean:
+	docker compose run --rm --no-deps spark \
+	    bash -c "rm -rf /app/data/checkpoints/* && echo 'Checkpoints cleared'"
+
 ## Run Spark job locally (outside Docker) — requires PySpark installed
 spark-local:
 	KAFKA_BOOTSTRAP_SERVERS=$${KAFKA_BOOTSTRAP_SERVERS:-localhost:9092} \
