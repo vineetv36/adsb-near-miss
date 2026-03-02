@@ -88,7 +88,60 @@ services:
       start_period: 5s
     restart: unless-stopped
 
+  # ──────────────────────────────────────────────
+  # Spark – near-miss streaming job (local[2] mode)
+  # ──────────────────────────────────────────────
+  spark:
+    build:
+      context: .
+      dockerfile: infra/spark/Dockerfile
+    container_name: adsb-spark
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      DATABASE_URL: postgresql://${POSTGRES_USER:-adsb}:${POSTGRES_PASSWORD:-adsb_secret}@postgres:5432/${POSTGRES_DB:-adsb}
+      REDIS_URL: redis://redis:6379/0
+      PARQUET_PATH: /app/data/events
+      CHECKPOINT_PATH: /app/data/checkpoints
+    volumes:
+      - ./src:/app/src:ro
+      - spark-data:/app/data
+      - ivy-cache:/tmp/.ivy2
+    depends_on:
+      kafka:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command:
+      - /opt/bitnami/spark/bin/spark-submit
+      - --master
+      - local[2]
+      - --packages
+      - >-
+        org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.0,
+        org.apache.spark:spark-token-provider-kafka-0-10_2.12:3.5.0,
+        org.apache.commons:commons-pool2:2.11.1
+      - --conf
+      - spark.jars.ivy=/tmp/.ivy2
+      - --conf
+      - spark.driver.memory=1g
+      - --conf
+      - spark.sql.adaptive.enabled=false
+      - --conf
+      - spark.ui.showConsoleProgress=false
+      - /app/src/processing/spark_streaming_job.py
+    restart: on-failure:5
+    healthcheck:
+      test: ["CMD", "pgrep", "-f", "spark_streaming_job"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 90s
+
 volumes:
   kafka-data:
   postgres-data:
   redis-data:
+  spark-data:
+  ivy-cache:

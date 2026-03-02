@@ -1,6 +1,9 @@
 PYTHON ?= $(shell command -v python3 || command -v python)
 
-.PHONY: up down logs simulate simulate-small ingest test lint install
+.PHONY: up down logs build spark spark-logs spark-restart \
+        simulate simulate-small simulate-dry ingest \
+        create-topic consume consume-live \
+        install install-all test lint analyze benchmark
 
 # ── Infrastructure ─────────────────────────────────────────────────────────────
 up:
@@ -11,11 +14,36 @@ up:
 	    >/dev/null 2>&1; do sleep 2; done
 	@echo "✓ Stack is up"
 
+## Build all custom images (Spark) before first `make up`
+build:
+	docker compose build
+
 down:
 	docker compose down
 
 logs:
 	docker compose logs -f
+
+# ── Spark ──────────────────────────────────────────────────────────────────────
+
+## Tail Spark streaming job logs
+spark-logs:
+	docker compose logs -f spark
+
+## Restart Spark job (e.g. after a code change)
+spark-restart:
+	docker compose restart spark
+
+## Run Spark job locally (outside Docker) — requires PySpark installed
+spark-local:
+	KAFKA_BOOTSTRAP_SERVERS=$${KAFKA_BOOTSTRAP_SERVERS:-localhost:9092} \
+	PYTHONPATH=src \
+	spark-submit \
+	    --master local[2] \
+	    --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.0,org.apache.spark:spark-token-provider-kafka-0-10_2.12:3.5.0,org.apache.commons:commons-pool2:2.11.1 \
+	    --conf spark.jars.ivy=/tmp/.ivy2 \
+	    --conf spark.driver.memory=1g \
+	    src/processing/spark_streaming_job.py
 
 # ── Ingestion ─────────────────────────────────────────────────────────────────
 
