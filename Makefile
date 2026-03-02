@@ -1,6 +1,7 @@
 PYTHON ?= $(shell command -v python3 || command -v python)
 
 .PHONY: up down logs build spark spark-logs spark-restart \
+        api api-logs api-restart \
         simulate simulate-small simulate-dry ingest \
         create-topic consume consume-live \
         install install-all test lint analyze benchmark
@@ -48,6 +49,20 @@ spark-local:
 	    --conf spark.jars.ivy=/tmp/.ivy2 \
 	    --conf spark.driver.memory=1g \
 	    src/processing/spark_streaming_job.py
+
+# ── API ────────────────────────────────────────────────────────────────────────
+
+## Start (or restart) only the API service
+api:
+	docker compose up -d api
+
+## Tail API logs
+api-logs:
+	docker compose logs -f api
+
+## Restart API (e.g. after a code change — src/ is volume-mounted)
+api-restart:
+	docker compose restart api
 
 # ── Ingestion ─────────────────────────────────────────────────────────────────
 
