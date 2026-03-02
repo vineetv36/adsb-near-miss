@@ -31,9 +31,10 @@ services:
       KAFKA_NUM_PARTITIONS: 6
       KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
 
-      # Log retention
-      KAFKA_LOG_RETENTION_HOURS: 168
-      KAFKA_LOG_SEGMENT_BYTES: 1073741824
+      # Log retention — 6 GB total cap (1 GB per partition × 6 partitions)
+      KAFKA_LOG_RETENTION_HOURS: 72
+      KAFKA_LOG_RETENTION_BYTES: 1073741824
+      KAFKA_LOG_SEGMENT_BYTES: 268435456
     volumes:
       - kafka-data:/var/lib/kafka/data
     healthcheck:

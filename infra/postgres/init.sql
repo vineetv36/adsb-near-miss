@@ -61,6 +61,31 @@ CREATE TABLE hotspots (
 );
 
 -- ──────────────────────────────────────────────
+-- Storage budget: ~3 GB for this database
+--
+-- High-volume table: aircraft_tracks (~1 000 rows/s at full load)
+--   → keep a rolling 7-day window; call cleanup_old_tracks() from a cron job
+--     or pg_cron:  SELECT cron.schedule('0 * * * *', 'SELECT cleanup_old_tracks()');
+--
+-- Low-volume tables: separation_events, hotspots — kept indefinitely
+--   (events are rare; hotspots are batch-computed summaries)
+-- ──────────────────────────────────────────────
+
+CREATE OR REPLACE FUNCTION cleanup_old_tracks(retain_days INT DEFAULT 7)
+RETURNS INT
+LANGUAGE plpgsql AS $$
+DECLARE
+    rows_deleted INT;
+BEGIN
+    DELETE FROM aircraft_tracks
+    WHERE observed_at < NOW() - (retain_days || ' days')::INTERVAL;
+    GET DIAGNOSTICS rows_deleted = ROW_COUNT;
+    RAISE NOTICE 'cleanup_old_tracks: deleted % rows older than % days', rows_deleted, retain_days;
+    RETURN rows_deleted;
+END;
+$$;
+
+-- ──────────────────────────────────────────────
 -- Spatial indexes
 -- ──────────────────────────────────────────────
 CREATE INDEX idx_tracks_geom ON aircraft_tracks USING GIST(geom);
