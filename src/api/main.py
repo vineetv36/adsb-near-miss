@@ -15,8 +15,11 @@ import asyncpg
 import redis.asyncio as aioredis
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from src.api.routes import hotspots, live_traffic, near_misses, stats, ws_alerts
+
+FRONTEND_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "frontend")
 
 DATABASE_URL = os.getenv(
     "DATABASE_URL",
@@ -58,3 +61,9 @@ app.include_router(ws_alerts.router, tags=["websocket"])
 @app.get("/health")
 async def health():
     return {"status": "ok"}
+
+
+# Serve the Deck.gl frontend at / — must be mounted AFTER all API routes
+# so /api/* requests are handled first.
+if os.path.isdir(FRONTEND_DIR):
+    app.mount("/", StaticFiles(directory=FRONTEND_DIR, html=True), name="frontend")

@@ -151,6 +151,7 @@ services:
       REDIS_URL: redis://redis:6379/0
     volumes:
       - ./src:/app/src:ro
+      - ./frontend:/app/frontend:ro
     depends_on:
       postgres:
         condition: service_healthy
