@@ -118,10 +118,7 @@ services:
       - --master
       - local[2]
       - --packages
-      - >-
-        org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.0,
-        org.apache.spark:spark-token-provider-kafka-0-10_2.12:3.5.0,
-        org.apache.commons:commons-pool2:2.11.1
+      - "org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.0,org.apache.spark:spark-token-provider-kafka-0-10_2.12:3.5.0,org.apache.commons:commons-pool2:2.11.1"
       - --conf
       - spark.jars.ivy=/tmp/.ivy2
       - --conf

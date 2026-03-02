@@ -26,6 +26,10 @@ logs:
 
 # ── Spark ──────────────────────────────────────────────────────────────────────
 
+## Start (or restart) only the Spark service
+spark:
+	docker compose up -d spark
+
 ## Tail Spark streaming job logs
 spark-logs:
 	docker compose logs -f spark
