@@ -126,7 +126,7 @@ consume-live:
 
 # ── Development ───────────────────────────────────────────────────────────────
 install:
-	$(PYTHON) -m pip install confluent-kafka kafka-python python-geohash pydantic
+	$(PYTHON) -m pip install -r requirements.txt
 
 install-all:
 	$(PYTHON) -m pip install poetry && poetry install
