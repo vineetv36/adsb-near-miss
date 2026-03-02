@@ -1,3 +1,5 @@
+PYTHON ?= $(shell command -v python3 || command -v python)
+
 .PHONY: up down logs simulate simulate-small ingest test lint install
 
 # ── Infrastructure ─────────────────────────────────────────────────────────────
@@ -20,14 +22,14 @@ logs:
 ## Full simulator: 500 aircraft, 1% near-miss rate → Kafka at kafka:9092
 simulate:
 	KAFKA_BOOTSTRAP_SERVERS=$${KAFKA_BOOTSTRAP_SERVERS:-localhost:9092} \
-	python src/ingestion/adsb_simulator.py \
+	$(PYTHON) src/ingestion/adsb_simulator.py \
 	    --aircraft 500 \
 	    --near-miss-rate 0.01 \
 	    --bootstrap $${KAFKA_BOOTSTRAP_SERVERS:-localhost:9092}
 
 ## Lighter run for dev laptops
 simulate-small:
-	python src/ingestion/adsb_simulator.py \
+	$(PYTHON) src/ingestion/adsb_simulator.py \
 	    --aircraft 50 \
 	    --near-miss-rate 0.10 \
 	    --bootstrap $${KAFKA_BOOTSTRAP_SERVERS:-localhost:9092} \
@@ -35,7 +37,7 @@ simulate-small:
 
 ## Dry-run: no Kafka needed — prints messages to stdout
 simulate-dry:
-	python src/ingestion/adsb_simulator.py \
+	$(PYTHON) src/ingestion/adsb_simulator.py \
 	    --aircraft 20 \
 	    --near-miss-rate 0.50 \
 	    --dry-run \
@@ -45,7 +47,7 @@ simulate-dry:
 ## Live OpenSky feed (requires OPENSKY_USERNAME / OPENSKY_PASSWORD in env or .env)
 ingest:
 	KAFKA_BOOTSTRAP_SERVERS=$${KAFKA_BOOTSTRAP_SERVERS:-localhost:9092} \
-	python src/ingestion/opensky_producer.py
+	$(PYTHON) src/ingestion/opensky_producer.py
 
 # ── Kafka admin helpers ────────────────────────────────────────────────────────
 
@@ -77,20 +79,20 @@ consume-live:
 
 # ── Development ───────────────────────────────────────────────────────────────
 install:
-	pip install confluent-kafka kafka-python python-geohash pydantic
+	$(PYTHON) -m pip install confluent-kafka kafka-python python-geohash pydantic
 
 install-all:
-	pip install poetry && poetry install
+	$(PYTHON) -m pip install poetry && poetry install
 
 test:
-	pytest tests/ -v
+	$(PYTHON) -m pytest tests/ -v
 
 lint:
-	ruff check src/ tests/
+	$(PYTHON) -m ruff check src/ tests/
 
 analyze:
-	python src/analysis/hotspot_clustering.py
+	$(PYTHON) src/analysis/hotspot_clustering.py
 
 benchmark:
-	python benchmarks/throughput_test.py
-	python benchmarks/latency_test.py
+	$(PYTHON) benchmarks/throughput_test.py
+	$(PYTHON) benchmarks/latency_test.py
