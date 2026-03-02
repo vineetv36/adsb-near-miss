@@ -1,27 +1,33 @@
 # ── Spark worker image for ADS-B near-miss detector ──────────────────────────
 #
-# Base: bitnami/spark:3.5.1  (ships with PySpark 3.5, Java 17, Python 3.11)
-# Adds: Python packages needed by the streaming job's foreachBatch handler
-#       (psycopg2, redis, pandas, pyarrow – none of these are in the base image)
+# Base: python:3.11-slim  (Debian bookworm — same family as other project images)
+# Java: default-jre-headless (OpenJDK 17 on Debian 12)
+# Spark: installed via `pip install pyspark` (avoids bitnami/apache registry deps)
 #
-# The Kafka SQL connector JAR is downloaded by spark-submit --packages at
-# first startup and cached in the ivy2 volume to avoid re-downloading.
+# The Kafka SQL connector JAR is resolved by spark-submit --packages at first
+# startup and cached in the ivy-cache volume for fast subsequent restarts.
 # ─────────────────────────────────────────────────────────────────────────────
-FROM bitnami/spark:3.5.1
+FROM python:3.11-slim
 
-USER root
+# Java runtime (required by Spark) + procps (pgrep for healthcheck)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        default-jre-headless \
+        procps \
+    && rm -rf /var/lib/apt/lists/*
 
+# default-jre-headless creates this symlink regardless of architecture
+ENV JAVA_HOME=/usr/lib/jvm/default-java
+
+# Python deps needed by the streaming job's foreachBatch handler
 RUN pip install --no-cache-dir \
+        pyspark==3.5.1 \
         psycopg2-binary==2.9.9 \
         redis==5.0.1 \
         pandas==2.2.1 \
         pyarrow==15.0.2 \
         confluent-kafka==2.3.0
 
-# Writable directories for Parquet output, checkpoints, and Ivy JAR cache
-RUN mkdir -p /app/data/events /app/data/checkpoints /tmp/.ivy2 \
- && chown -R 1001:1001 /app /tmp/.ivy2
-
-USER 1001
+# Working directories (spark-submit writes checkpoints + Parquet here)
+RUN mkdir -p /app/data/events /app/data/checkpoints /tmp/.ivy2
 
 WORKDIR /app

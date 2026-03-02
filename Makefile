@@ -44,7 +44,7 @@ spark-local:
 	PYTHONPATH=src \
 	spark-submit \
 	    --master local[2] \
-	    --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.0,org.apache.spark:spark-token-provider-kafka-0-10_2.12:3.5.0,org.apache.commons:commons-pool2:2.11.1 \
+	    --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.1,org.apache.spark:spark-token-provider-kafka-0-10_2.12:3.5.1,org.apache.commons:commons-pool2:2.11.1 \
 	    --conf spark.jars.ivy=/tmp/.ivy2 \
 	    --conf spark.driver.memory=1g \
 	    src/processing/spark_streaming_job.py
