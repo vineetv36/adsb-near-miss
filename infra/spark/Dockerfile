@@ -1,13 +1,13 @@
 # ── Spark worker image for ADS-B near-miss detector ──────────────────────────
 #
-# Base: bitnami/spark:3.5  (ships with PySpark 3.5, Java 17, Python 3.11)
+# Base: bitnami/spark:3.5.1  (ships with PySpark 3.5, Java 17, Python 3.11)
 # Adds: Python packages needed by the streaming job's foreachBatch handler
 #       (psycopg2, redis, pandas, pyarrow – none of these are in the base image)
 #
 # The Kafka SQL connector JAR is downloaded by spark-submit --packages at
 # first startup and cached in the ivy2 volume to avoid re-downloading.
 # ─────────────────────────────────────────────────────────────────────────────
-FROM bitnami/spark:3.5
+FROM bitnami/spark:3.5.1
 
 USER root
 
