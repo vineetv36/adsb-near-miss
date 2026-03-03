@@ -13,7 +13,7 @@ Aircraft physics:
 
 Near-miss injection:
   - Every 10-second window, triggered with probability --near-miss-rate
-  - Two aircraft converge from ~15 NM to < 3 NM horizontal / < 800 ft vertical
+  - Two aircraft converge from ~5 NM to < 3 NM horizontal / < 800 ft vertical
   - Tagged with _near_miss_pair in the Kafka message for downstream validation
 
 Kafka output:
@@ -72,7 +72,7 @@ CLIMB_FRAC   = 0.28             # first 28% of route = climbing
 DESCENT_FRAC = 0.28             # last  28% of route = descending
 
 # Near-miss geometry
-NM_APPROACH_M   = 15 * NM_TO_M  # each aircraft starts 15 NM from convergence
+NM_APPROACH_M   =  5 * NM_TO_M  # each aircraft starts 5 NM from convergence
 NM_OVERSHOOT_M  =  5 * NM_TO_M  # flies 5 NM past convergence (ensures crossing)
 
 # Kafka topic

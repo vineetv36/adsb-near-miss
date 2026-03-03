@@ -350,11 +350,18 @@ def process_batch(spark_df, epoch_id: int) -> None:
     # map, not just pairs involved in events.
     _write_positions_redis(pdf)
 
-    # ── 4. Geohash precision-5 + expand to 9 cells ───────────────────────────
+    # ── 4. Geohash + expand to candidate cells ────────────────────────────────
+    # gh5 (precision 5, ≈4.9 km) is stored in the DB for spatial indexing.
+    # Candidate generation uses precision 4 (≈20 km cells) so the 9-cell 3×3
+    # neighbourhood reliably covers the full 8 NM threshold at all US latitudes.
+    # At precision 5 two aircraft can be 5+ NM apart yet sit in cells that are
+    # 3 steps apart — outside the 3×3 window — causing silent misses.
     pdf["gh5"] = pdf.apply(
         lambda r: gh_encode(r["latitude"], r["longitude"], 5), axis=1
     )
-    pdf["cells"] = pdf["gh5"].apply(gh_expand)
+    pdf["cells"] = pdf.apply(
+        lambda r: gh_expand(gh_encode(r["latitude"], r["longitude"], 4)), axis=1
+    )
 
     # ── 5. Explode → self-join on cell ────────────────────────────────────────
     exploded = (
