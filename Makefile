@@ -58,7 +58,7 @@ spark-clean:
 
 ## Run Spark job locally (outside Docker) — requires PySpark installed
 spark-local:
-	KAFKA_BOOTSTRAP_SERVERS=$${KAFKA_BOOTSTRAP_SERVERS:-localhost:9092} \
+	KAFKA_BOOTSTRAP_SERVERS=$${KAFKA_BOOTSTRAP_SERVERS:-localhost:29092} \
 	PYTHONPATH=src \
 	spark-submit \
 	    --master local[2] \
@@ -83,20 +83,19 @@ api-restart:
 
 # ── Ingestion ─────────────────────────────────────────────────────────────────
 
-## Full simulator: 500 aircraft, 1% near-miss rate → Kafka at kafka:9092
+## Full simulator: 500 aircraft, 1% near-miss rate → Kafka (host external port)
 simulate:
-	KAFKA_BOOTSTRAP_SERVERS=$${KAFKA_BOOTSTRAP_SERVERS:-localhost:9092} \
 	$(PYTHON) src/ingestion/adsb_simulator.py \
 	    --aircraft 500 \
 	    --near-miss-rate 0.01 \
-	    --bootstrap $${KAFKA_BOOTSTRAP_SERVERS:-localhost:9092}
+	    --bootstrap $${KAFKA_BOOTSTRAP_SERVERS:-localhost:29092}
 
 ## Lighter run for dev laptops
 simulate-small:
 	$(PYTHON) src/ingestion/adsb_simulator.py \
 	    --aircraft 50 \
 	    --near-miss-rate 0.10 \
-	    --bootstrap $${KAFKA_BOOTSTRAP_SERVERS:-localhost:9092} \
+	    --bootstrap $${KAFKA_BOOTSTRAP_SERVERS:-localhost:29092} \
 	    --log-interval 5
 
 ## Dry-run: no Kafka needed — prints messages to stdout
@@ -110,7 +109,7 @@ simulate-dry:
 
 ## Live OpenSky feed (requires OPENSKY_USERNAME / OPENSKY_PASSWORD in env or .env)
 ingest:
-	KAFKA_BOOTSTRAP_SERVERS=$${KAFKA_BOOTSTRAP_SERVERS:-localhost:9092} \
+	KAFKA_BOOTSTRAP_SERVERS=$${KAFKA_BOOTSTRAP_SERVERS:-localhost:29092} \
 	$(PYTHON) src/ingestion/opensky_producer.py
 
 # ── Kafka admin helpers ────────────────────────────────────────────────────────
