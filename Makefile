@@ -90,11 +90,11 @@ simulate:
 	    --near-miss-rate 0.01 \
 	    --bootstrap $${KAFKA_BOOTSTRAP_SERVERS:-localhost:29092}
 
-## Lighter run for dev laptops
+## Lighter run for dev laptops — guaranteed near-miss every 10 s for quick demos
 simulate-small:
 	$(PYTHON) src/ingestion/adsb_simulator.py \
 	    --aircraft 50 \
-	    --near-miss-rate 0.10 \
+	    --near-miss-rate 1.0 \
 	    --bootstrap $${KAFKA_BOOTSTRAP_SERVERS:-localhost:29092} \
 	    --log-interval 5
 
@@ -154,7 +154,7 @@ lint:
 	$(PYTHON) -m ruff check src/ tests/
 
 analyze:
-	$(PYTHON) src/analysis/hotspot_clustering.py
+	$(PYTHON) src/analysis/hotspot_clustering.py --min-cluster-size 3 --min-samples 2
 
 benchmark:
 	$(PYTHON) benchmarks/throughput_test.py

@@ -15,7 +15,7 @@ router = APIRouter()
 @router.get("/hotspots", summary="Hotspot polygons as GeoJSON FeatureCollection")
 async def list_hotspots(
     request: Request,
-    min_events: int = Query(10, ge=1, description="Minimum event count to include"),
+    min_events: int = Query(3, ge=1, description="Minimum event count to include"),
     days: Optional[int] = Query(
         None, ge=1, description="Only hotspots with activity in the last N days"
     ),

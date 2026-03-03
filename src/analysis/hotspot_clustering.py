@@ -193,8 +193,8 @@ def fetch_events(conn: Any) -> list[dict]:
 
 def run_hdbscan(
     events: list[dict],
-    min_cluster_size: int = 5,
-    min_samples: int = 3,
+    min_cluster_size: int = 3,
+    min_samples: int = 2,
 ) -> np.ndarray:
     """
     Fit HDBSCAN on event midpoints (lat/lon in radians for haversine metric).
@@ -351,16 +351,16 @@ def main() -> None:
     parser.add_argument(
         "--min-cluster-size",
         type=int,
-        default=5,
+        default=3,
         metavar="N",
-        help="HDBSCAN min_cluster_size (default: 5)",
+        help="HDBSCAN min_cluster_size (default: 3)",
     )
     parser.add_argument(
         "--min-samples",
         type=int,
-        default=3,
+        default=2,
         metavar="N",
-        help="HDBSCAN min_samples (default: 3)",
+        help="HDBSCAN min_samples (default: 2)",
     )
     parser.add_argument(
         "--db-url",
@@ -386,8 +386,8 @@ def main() -> None:
 
         if len(events) < args.min_cluster_size:
             logging.warning(
-                "Only %d events — need at least %d for clustering. "
-                "Run the simulator first: make simulate",
+                "Only %d qualifying events — need at least %d for clustering. "
+                "Let the simulator run for a few more minutes: make simulate-small",
                 len(events),
                 args.min_cluster_size,
             )

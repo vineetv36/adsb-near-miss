@@ -507,9 +507,13 @@ def make_near_miss_pair(counter: int, now: float) -> Tuple["Aircraft", "Aircraft
         so they fly *through* each other (crossing scenario)
       - Both cruise at the same altitude ± 200 ft (< 1 000 ft vertical sep → LoS)
     """
-    # Convergence point
-    c_lat = random.uniform(*_US_LAT)
-    c_lon = random.uniform(*_US_LON)
+    # Convergence point — biased toward a random major airport so repeated
+    # near-miss events cluster geographically and form HDBSCAN hotspots.
+    # Gaussian spread (σ ≈ 0.3° ≈ 20 NM) keeps events realistic while
+    # concentrating them near busy airspace rather than random open ocean/desert.
+    _, ap_lat, ap_lon, _ = random.choice(AIRPORTS)
+    c_lat = max(_US_LAT[0], min(_US_LAT[1], ap_lat + random.gauss(0, 0.3)))
+    c_lon = max(_US_LON[0], min(_US_LON[1], ap_lon + random.gauss(0, 0.4)))
     c_alt_m = random.uniform(MIN_CRUISE_ALT_M, MAX_CRUISE_ALT_M)
 
     # Two approach bearings ~opposite (170°–190° apart)
