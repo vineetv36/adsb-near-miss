@@ -204,6 +204,37 @@ def _write_tracks_postgis(events: pd.DataFrame, dsn: str) -> None:
         log.warning("aircraft_tracks write error: %s", e)
 
 
+def _write_positions_redis(pdf: pd.DataFrame) -> None:
+    """
+    Write every aircraft's current position to Redis under aircraft:{icao24}.
+
+    These keys are what GET /api/live-traffic reads (pattern aircraft:*).
+    TTL is 60 s — slightly longer than the 10-second micro-batch interval so
+    aircraft don't flicker, but short enough that landed/gone aircraft
+    disappear promptly.
+    """
+    try:
+        import redis as redis_lib  # type: ignore
+        r = redis_lib.from_url(REDIS_URL, socket_connect_timeout=2)
+        pipe = r.pipeline()
+        for _, row in pdf.iterrows():
+            baro_m = row.get("baro_altitude")
+            vel_ms = row.get("velocity") or 0
+            payload = json.dumps({
+                "icao24":       row["icao24"],
+                "callsign":     (row.get("callsign") or "").strip() or None,
+                "latitude":     row["latitude"],
+                "longitude":    row["longitude"],
+                "altitude_ft":  round(baro_m * M_TO_FT, 0) if baro_m is not None else None,
+                "velocity_kts": round(vel_ms * MS_TO_KTS, 1),
+                "true_track":   row.get("true_track"),
+            })
+            pipe.set(f"aircraft:{row['icao24']}", payload, ex=60)
+        pipe.execute()
+    except Exception as e:
+        log.warning("Redis positions write error: %s", e)
+
+
 def _write_redis(events: pd.DataFrame) -> None:
     """Push lightweight alerts to Redis (TTL = 5 minutes)."""
     import redis as redis_lib  # type: ignore
@@ -314,13 +345,18 @@ def process_batch(spark_df, epoch_id: int) -> None:
            .reset_index(drop=True)
     )
 
-    # ── 3. Geohash precision-5 + expand to 9 cells ───────────────────────────
+    # ── 3. Write all positions to Redis for the live-traffic API ─────────────
+    # Must happen before the near-miss filter so every aircraft appears on the
+    # map, not just pairs involved in events.
+    _write_positions_redis(pdf)
+
+    # ── 4. Geohash precision-5 + expand to 9 cells ───────────────────────────
     pdf["gh5"] = pdf.apply(
         lambda r: gh_encode(r["latitude"], r["longitude"], 5), axis=1
     )
     pdf["cells"] = pdf["gh5"].apply(gh_expand)
 
-    # ── 4. Explode → self-join on cell ────────────────────────────────────────
+    # ── 5. Explode → self-join on cell ────────────────────────────────────────
     exploded = (
         pdf.explode("cells")
            .rename(columns={"cells": "cell"})
