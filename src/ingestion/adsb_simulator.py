@@ -277,6 +277,7 @@ class Aircraft:
     baro_geo_offset_m: float  # constant baro-minus-geo offset for this airframe
     ping_miss_prob:    float  # probability of skipping a position update
     next_update_t:     float  # wall-clock time of next ping
+    last_ping_t:       float  # wall-clock time advance() was last called
 
     # Near-miss tagging (None for regular aircraft)
     near_miss_pair: Optional[str] = None
@@ -456,6 +457,7 @@ def make_aircraft(counter: int, now: float) -> Aircraft:
         baro_geo_offset_m = random.uniform(-120, 120),
         ping_miss_prob   = random.uniform(0.01, 0.08),
         next_update_t    = now + random.uniform(0, 2.0),
+        last_ping_t      = now,
     )
 
 
@@ -490,6 +492,7 @@ def reassign_route(ac: Aircraft, now: float) -> Aircraft:
     ac.vertical_rate_ms = 0.0
     ac.phase          = FlightPhase.CLIMBING
     ac.next_update_t  = now + random.uniform(0.5, 2.0)
+    ac.last_ping_t    = now
     ac.near_miss_pair = None
     ac.flat_cruise    = False
     return ac
@@ -564,6 +567,7 @@ def make_near_miss_pair(counter: int, now: float) -> Tuple["Aircraft", "Aircraft
             baro_geo_offset_m = random.uniform(-80, 80),
             ping_miss_prob   = 0.02,
             next_update_t    = now,
+            last_ping_t      = now,
             flat_cruise      = True,
             near_miss_pair   = partner_icao,
         )
@@ -714,12 +718,24 @@ class ADSBSimulator:
                 if now < ac.next_update_t:
                     continue
 
-                # Occasional missed ping
+                # True elapsed time since this aircraft was last advanced.
+                # Using the loop-tick dt (≈0.05 s) here would make aircraft
+                # move 30× too slowly (ping interval ÷ loop rate = 1.5/0.05).
+                advance_dt    = now - ac.last_ping_t
+                ac.last_ping_t = now
+                ac.advance(advance_dt)
+
+                # Occasional missed ping (aircraft still flew — position just
+                # not transmitted this cycle)
                 if random.random() < ac.ping_miss_prob:
                     ac.next_update_t = now + random.uniform(1.0, 2.5)
+                    if ac.progress >= 1.0:
+                        if ac.flat_cruise:
+                            to_reassign.append(idx)
+                        else:
+                            reassign_route(ac, now)
                     continue
 
-                ac.advance(dt)
                 msg = ac.to_message(now)
                 self.producer.produce(TOPIC_RAW, key=msg["geohash"] or "0000", value=msg)
                 self._msgs_sent  += 1
