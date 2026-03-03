@@ -89,34 +89,6 @@ services:
     restart: unless-stopped
 
   # ──────────────────────────────────────────────
-  # Kafka topic initialisation — runs once, then exits.
-  # Creates adsb.raw and adsb.dlq so that Spark never
-  # subscribes to a topic whose partition leaders haven't
-  # been elected yet (the root cause of the
-  # "This server does not host this topic-partition" error).
-  # ──────────────────────────────────────────────
-  kafka-init:
-    image: apache/kafka:3.7.0
-    container_name: adsb-kafka-init
-    depends_on:
-      kafka:
-        condition: service_healthy
-    command:
-      - bash
-      - -c
-      - |
-        echo "Creating Kafka topics…"
-        /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 \
-          --create --if-not-exists \
-          --topic adsb.raw --partitions 6 --replication-factor 1
-        /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 \
-          --create --if-not-exists \
-          --topic adsb.dlq --partitions 1 --replication-factor 1
-        echo "Topics ready:"
-        /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --list
-    restart: "no"
-
-  # ──────────────────────────────────────────────
   # Spark – near-miss streaming job (local[2] mode)
   # ──────────────────────────────────────────────
   spark:
@@ -135,8 +107,8 @@ services:
       - spark-data:/app/data
       - ivy-cache:/tmp/.ivy2
     depends_on:
-      kafka-init:
-        condition: service_completed_successfully
+      kafka:
+        condition: service_healthy
       postgres:
         condition: service_healthy
       redis:

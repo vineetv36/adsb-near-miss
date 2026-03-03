@@ -13,7 +13,17 @@ up:
 	@until docker compose exec kafka \
 	    /opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 \
 	    >/dev/null 2>&1; do sleep 2; done
-	@echo "✓ Stack is up"
+	@echo "Creating Kafka topics (ensures partition leaders are elected before Spark starts)…"
+	@docker compose exec kafka /opt/kafka/bin/kafka-topics.sh \
+	    --bootstrap-server localhost:9092 \
+	    --create --if-not-exists \
+	    --topic adsb.raw --partitions 6 --replication-factor 1
+	@docker compose exec kafka /opt/kafka/bin/kafka-topics.sh \
+	    --bootstrap-server localhost:9092 \
+	    --create --if-not-exists \
+	    --topic adsb.dlq --partitions 1 --replication-factor 1
+	@docker compose restart spark
+	@echo "✓ Stack is up — topics ready, Spark restarted"
 
 ## Build all custom images (Spark) before first `make up`
 build:
