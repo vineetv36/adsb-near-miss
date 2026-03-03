@@ -133,6 +133,12 @@ consume:
 	    --from-beginning \
 	    --max-messages 20
 
+## Wipe separation events + hotspots so old/buggy data doesn't pollute the map
+db-reset-events:
+	docker compose exec postgres psql -U $${POSTGRES_USER:-adsb} $${POSTGRES_DB:-adsb} \
+	    -c "TRUNCATE separation_events, hotspots RESTART IDENTITY;"
+	@echo "✓ separation_events and hotspots cleared"
+
 ## Continuous consumer (Ctrl-C to stop)
 consume-live:
 	docker compose exec kafka \

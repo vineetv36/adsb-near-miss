@@ -152,10 +152,12 @@ def polygon_wkt(lats: list[float], lons: list[float]) -> str:
     hull = pts.convex_hull
 
     if hull.geom_type == "Point":
-        # Single unique location — buffer ~1 km  (≈ 0.009°)
-        hull = hull.buffer(0.009)
+        # Single unique location — buffer ~0.3° (≈ 25 km) so the polygon is
+        # visible at zoom 4 on the map.  A tight cluster of events all from the
+        # same aircraft pair produces a degenerate single-point hull.
+        hull = hull.buffer(0.3)
     elif hull.geom_type == "LineString":
-        hull = hull.buffer(0.005)
+        hull = hull.buffer(0.15)
 
     return hull.wkt
 

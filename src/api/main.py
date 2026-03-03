@@ -9,6 +9,7 @@ Connects to:
 from __future__ import annotations
 
 import asyncio
+import json as _json
 import logging
 import os
 import sys
@@ -91,9 +92,26 @@ async def _clustering_loop() -> None:
         await asyncio.sleep(_CLUSTER_INTERVAL)
 
 
+async def _init_asyncpg_conn(conn: asyncpg.Connection) -> None:
+    """Register JSON codec so ST_AsGeoJSON()::json columns decode to dicts.
+
+    asyncpg returns PostgreSQL json/jsonb as raw str by default.  Without this
+    codec the geometry fields (midpoint, geom, centroid) arrive at FastAPI as
+    plain strings, which the deck.gl frontend cannot parse as GeoJSON objects.
+    """
+    await conn.set_type_codec(
+        "json",
+        schema="pg_catalog",
+        encoder=_json.dumps,
+        decoder=_json.loads,
+    )
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    app.state.db = await asyncpg.create_pool(DATABASE_URL, min_size=2, max_size=10)
+    app.state.db = await asyncpg.create_pool(
+        DATABASE_URL, min_size=2, max_size=10, init=_init_asyncpg_conn
+    )
     app.state.redis = aioredis.from_url(REDIS_URL, decode_responses=True)
     task = asyncio.create_task(_clustering_loop())
     yield
