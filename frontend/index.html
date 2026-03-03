@@ -189,7 +189,7 @@
 const API = (window.API_BASE || '').replace(/\/$/, '');
 const WS  = (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ws/alerts';
 
-const POLL_MS = { traffic: 10_000, events: 30_000, hotspots: 120_000, stats: 15_000 };
+const POLL_MS = { traffic: 10_000, events: 30_000, hotspots: 30_000, stats: 15_000 };
 const MAX_ALERTS = 3;
 
 // ── Mutable state ─────────────────────────────────────────────────────────────

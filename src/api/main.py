@@ -8,7 +8,10 @@ Connects to:
 
 from __future__ import annotations
 
+import asyncio
+import logging
 import os
+import sys
 from contextlib import asynccontextmanager
 
 import asyncpg
@@ -19,6 +22,8 @@ from fastapi.staticfiles import StaticFiles
 
 from src.api.routes import hotspots, live_traffic, near_misses, stats, ws_alerts
 
+log = logging.getLogger("adsb.api")
+
 FRONTEND_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "frontend")
 
 DATABASE_URL = os.getenv(
@@ -27,12 +32,72 @@ DATABASE_URL = os.getenv(
 )
 REDIS_URL = os.getenv("REDIS_URL", "redis://redis:6379/0")
 
+# psycopg2 needs "postgres://" not "postgresql://"
+_PG_DSN = DATABASE_URL.replace("postgresql://", "postgres://", 1)
+
+# How often to re-run clustering (seconds)
+_CLUSTER_INTERVAL = 60
+
+
+def _run_clustering_sync() -> int:
+    """
+    Synchronous clustering job — runs in a thread-pool executor so it
+    doesn't block the async event loop.  Returns the number of clusters written.
+    """
+    # Import here so startup isn't slowed by optional heavy deps (hdbscan/shapely)
+    _src = os.path.join(os.path.dirname(__file__), "..", "..")
+    if _src not in sys.path:
+        sys.path.insert(0, _src)
+
+    try:
+        import psycopg2
+        from src.analysis.hotspot_clustering import (
+            build_cluster_records, fetch_events, run_hdbscan, write_hotspots,
+        )
+    except ImportError as exc:
+        log.debug("Hotspot clustering deps not available: %s", exc)
+        return 0
+
+    try:
+        conn = psycopg2.connect(_PG_DSN)
+        try:
+            events = fetch_events(conn)
+            if len(events) < 3:
+                return 0
+            labels = run_hdbscan(events, min_cluster_size=3, min_samples=2)
+            records = build_cluster_records(events, labels)
+            if records:
+                write_hotspots(conn, records)
+            return len(records)
+        finally:
+            conn.close()
+    except Exception as exc:
+        log.warning("Hotspot clustering error: %s", exc)
+        return 0
+
+
+async def _clustering_loop() -> None:
+    """Background task: cluster near-miss events into hotspot polygons."""
+    await asyncio.sleep(20)   # let the DB settle before first run
+    while True:
+        try:
+            n = await asyncio.get_event_loop().run_in_executor(None, _run_clustering_sync)
+            if n:
+                log.info("Hotspot clustering: %d clusters written", n)
+        except asyncio.CancelledError:
+            break
+        except Exception as exc:
+            log.warning("Clustering loop error: %s", exc)
+        await asyncio.sleep(_CLUSTER_INTERVAL)
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     app.state.db = await asyncpg.create_pool(DATABASE_URL, min_size=2, max_size=10)
     app.state.redis = aioredis.from_url(REDIS_URL, decode_responses=True)
+    task = asyncio.create_task(_clustering_loop())
     yield
+    task.cancel()
     await app.state.db.close()
     await app.state.redis.aclose()
 
