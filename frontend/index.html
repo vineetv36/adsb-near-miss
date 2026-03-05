@@ -1,0 +1,423 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>ADS-B Near-Miss Detector</title>
+
+  <!-- MapLibre GL (dark basemap, no API key required) -->
+  <script src="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.js"></script>
+  <link  href="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.css" rel="stylesheet" />
+
+  <!-- Deck.gl standalone bundle -->
+  <script src="https://unpkg.com/deck.gl@8.9.35/dist.min.js"></script>
+
+  <style>
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      background: #0d1117;
+      color: #e6edf3;
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      overflow: hidden;
+    }
+
+    #map { position: absolute; inset: 0; }
+
+    /* ── Header ─────────────────────────────────────────────────────── */
+    #header {
+      position: absolute;
+      top: 0; left: 0; right: 0; height: 48px;
+      background: rgba(13, 17, 23, 0.92);
+      border-bottom: 1px solid #30363d;
+      display: flex; align-items: center; gap: 12px; padding: 0 16px;
+      z-index: 10;
+      backdrop-filter: blur(8px);
+    }
+
+    #header h1 { font-size: 14px; font-weight: 600; letter-spacing: 0.03em; }
+
+    .dot {
+      width: 8px; height: 8px; border-radius: 50%;
+      background: #3fb950; box-shadow: 0 0 6px #3fb950;
+    }
+    .dot.off { background: #484f58; box-shadow: none; }
+    .dot.warn { background: #f85149; box-shadow: 0 0 6px #f85149; animation: blink 1s infinite; }
+
+    @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.3} }
+
+    #last-update {
+      margin-left: auto; font-size: 11px; color: #484f58;
+    }
+
+    /* ── Sidebar ─────────────────────────────────────────────────────── */
+    #sidebar {
+      position: absolute;
+      top: 48px; right: 0; width: 210px;
+      background: rgba(13, 17, 23, 0.9);
+      border-left: 1px solid #30363d;
+      padding: 12px;
+      z-index: 10;
+      backdrop-filter: blur(8px);
+    }
+
+    .panel-title {
+      font-size: 10px; font-weight: 600; letter-spacing: 0.08em;
+      text-transform: uppercase; color: #484f58;
+      margin-bottom: 8px;
+    }
+
+    .stat-row {
+      display: flex; justify-content: space-between; align-items: baseline;
+      padding: 3px 0; font-size: 12px; color: #8b949e;
+      border-bottom: 1px solid #21262d;
+    }
+    .stat-row:last-child { border-bottom: none; }
+
+    .stat-val { font-size: 15px; font-weight: 700; color: #e6edf3; }
+
+    .sev-LOSS_OF_SEPARATION { color: #f85149; }
+    .sev-NEAR_MISS          { color: #e3b341; }
+    .sev-PROXIMITY          { color: #58a6ff; }
+
+    hr.divider { border: none; border-top: 1px solid #21262d; margin: 10px 0; }
+
+    /* Layer toggles */
+    .layer-row {
+      display: flex; align-items: center; gap: 8px;
+      padding: 4px 0; font-size: 12px; color: #8b949e; cursor: pointer;
+    }
+    .layer-row input { cursor: pointer; accent-color: #58a6ff; }
+    .swatch { width: 10px; height: 10px; border-radius: 2px; flex-shrink: 0; }
+
+    /* ── Alert feed ──────────────────────────────────────────────────── */
+    #alerts {
+      position: absolute;
+      bottom: 16px; left: 50%; transform: translateX(-50%);
+      display: flex; flex-direction: column-reverse; align-items: center; gap: 6px;
+      pointer-events: none; z-index: 20; width: 480px;
+    }
+
+    .alert-chip {
+      background: rgba(192, 57, 43, 0.92);
+      border: 1px solid #f85149; border-radius: 20px;
+      padding: 5px 18px; font-size: 12px; font-weight: 500;
+      white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: ellipsis;
+      animation: rise 0.25s ease-out;
+      backdrop-filter: blur(4px);
+    }
+    @keyframes rise { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:none} }
+
+    /* ── Tooltip ─────────────────────────────────────────────────────── */
+    #tooltip {
+      position: absolute;
+      background: rgba(13, 17, 23, 0.96);
+      border: 1px solid #30363d; border-radius: 6px;
+      padding: 8px 12px; font-size: 12px; line-height: 1.7;
+      pointer-events: none; z-index: 30; display: none; max-width: 220px;
+    }
+    .tt-title { font-weight: 600; color: #e6edf3; }
+    .tt-row   { color: #8b949e; }
+  </style>
+</head>
+<body>
+
+<div id="map"></div>
+
+<!-- Header -->
+<div id="header">
+  <span id="ws-dot" class="dot off" title="WebSocket alert stream"></span>
+  <h1>✈ ADS-B Near-Miss Detector</h1>
+  <span id="last-update"></span>
+</div>
+
+<!-- Sidebar -->
+<div id="sidebar">
+  <div class="panel-title">Live Stats</div>
+  <div class="stat-row"><span>Aircraft</span>   <span class="stat-val" id="s-aircraft">–</span></div>
+  <div class="stat-row"><span>Events / hr</span><span class="stat-val" id="s-hour">–</span></div>
+  <div class="stat-row"><span>Events / 24h</span><span class="stat-val" id="s-24h">–</span></div>
+  <div class="stat-row"><span>Hotspots</span>   <span class="stat-val" id="s-hotspots">–</span></div>
+
+  <hr class="divider" />
+  <div class="panel-title">Severity (24h)</div>
+  <div class="stat-row">
+    <span class="sev-LOSS_OF_SEPARATION">Loss of Sep.</span>
+    <span class="stat-val sev-LOSS_OF_SEPARATION" id="s-los">–</span>
+  </div>
+  <div class="stat-row">
+    <span class="sev-NEAR_MISS">Near Miss</span>
+    <span class="stat-val sev-NEAR_MISS" id="s-nm">–</span>
+  </div>
+  <div class="stat-row">
+    <span class="sev-PROXIMITY">Proximity</span>
+    <span class="stat-val sev-PROXIMITY" id="s-prox">–</span>
+  </div>
+
+  <hr class="divider" />
+  <div class="panel-title">Layers</div>
+
+  <label class="layer-row">
+    <input type="checkbox" id="t-aircraft" checked />
+    <span class="swatch" style="background:#58a6ff"></span>
+    Live Aircraft
+  </label>
+  <label class="layer-row">
+    <input type="checkbox" id="t-nearmiss" checked />
+    <span class="swatch" style="background:#e3b341"></span>
+    Near-Miss Events
+  </label>
+  <label class="layer-row">
+    <input type="checkbox" id="t-hotspots" checked />
+    <span class="swatch" style="background:rgba(200,60,40,0.8)"></span>
+    Hotspot Polygons
+  </label>
+</div>
+
+<!-- Alert feed -->
+<div id="alerts"></div>
+
+<!-- Tooltip -->
+<div id="tooltip"></div>
+
+<script>
+'use strict';
+
+// ── Config ────────────────────────────────────────────────────────────────────
+// When served from FastAPI (http://localhost:8000/) API calls are relative.
+// Override by setting window.API_BASE before this script runs.
+const API = (window.API_BASE || '').replace(/\/$/, '');
+const WS  = (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ws/alerts';
+
+const POLL_MS = { traffic: 10_000, events: 30_000, hotspots: 30_000, stats: 15_000 };
+const MAX_ALERTS = 3;
+
+// ── Mutable state ─────────────────────────────────────────────────────────────
+let overlay   = null;
+let aircraft  = { type: 'FeatureCollection', features: [] };
+let events    = [];
+let hotspots  = { type: 'FeatureCollection', features: [] };
+
+const vis = { aircraft: true, nearmiss: true, hotspots: true };
+
+// ── DOM refs ──────────────────────────────────────────────────────────────────
+const $tooltip    = document.getElementById('tooltip');
+const $wsDot      = document.getElementById('ws-dot');
+const $alertFeed  = document.getElementById('alerts');
+const $lastUpdate = document.getElementById('last-update');
+
+// ── Tooltip helpers ───────────────────────────────────────────────────────────
+function showTooltip(x, y, html) {
+  $tooltip.style.cssText = `display:block;left:${x + 14}px;top:${y - 10}px`;
+  $tooltip.innerHTML = html;
+}
+const hideTooltip = () => { $tooltip.style.display = 'none'; };
+
+function ttAircraft(p) {
+  const cs  = (p.callsign || '').trim() || '–';
+  const alt = p.altitude_ft  != null ? Math.round(p.altitude_ft).toLocaleString() + ' ft' : '–';
+  const vel = p.velocity_kts != null ? Math.round(p.velocity_kts) + ' kts' : '–';
+  const trk = p.true_track   != null ? Math.round(p.true_track) + '°' : '–';
+  return `<div class="tt-title">${cs} &nbsp;<span style="color:#484f58">${p.icao24 || ''}</span></div>
+          <div class="tt-row">Alt: ${alt}</div>
+          <div class="tt-row">Speed: ${vel} &nbsp; Track: ${trk}</div>`;
+}
+
+function ttEvent(d) {
+  const a   = (d.icao24_a || '') + (d.callsign_a ? ` (${d.callsign_a.trim()})` : '');
+  const b   = (d.icao24_b || '') + (d.callsign_b ? ` (${d.callsign_b.trim()})` : '');
+  const h   = d.horizontal_nm != null ? d.horizontal_nm.toFixed(1) + ' NM' : '–';
+  const v   = d.vertical_ft   != null ? Math.round(d.vertical_ft) + ' ft'  : '–';
+  const t   = d.observed_at   ? new Date(d.observed_at).toLocaleTimeString() : '–';
+  const cls = `sev-${d.severity}`;
+  return `<div class="tt-title ${cls}">${d.severity.replace(/_/g,' ')}</div>
+          <div class="tt-row">${a}</div>
+          <div class="tt-row">${b}</div>
+          <div class="tt-row">H: ${h} &nbsp; V: ${v}</div>
+          <div class="tt-row">${t}</div>`;
+}
+
+function ttHotspot(p) {
+  return `<div class="tt-title">${p.nearest_airport || 'Hotspot'}</div>
+          <div class="tt-row">${p.event_count} events &nbsp; Class ${p.airspace_class || '?'}</div>
+          <div class="tt-row">Avg severity: ${(p.avg_severity || 0).toFixed(2)}</div>`;
+}
+
+// ── Layer builders ────────────────────────────────────────────────────────────
+function buildLayers() {
+  const layers = [];
+
+  // ① Hotspot polygons (bottom — drawn first)
+  if (vis.hotspots && hotspots.features.length) {
+    layers.push(new deck.GeoJsonLayer({
+      id: 'hotspots',
+      data: hotspots,
+      stroked: true, filled: true,
+      getFillColor: f => {
+        const t = Math.min(Math.max((f.properties.avg_severity || 1) - 1, 0), 1);
+        return [200, Math.round(60 - t * 30), 40, Math.round(30 + t * 80)];
+      },
+      getLineColor: [255, 90, 50, 200],
+      getLineWidth: 1200,
+      lineWidthMinPixels: 1,
+      pickable: true,
+      onHover: ({ object, x, y }) =>
+        object ? showTooltip(x, y, ttHotspot(object.properties)) : hideTooltip(),
+    }));
+  }
+
+  // ② Near-miss event midpoints
+  if (vis.nearmiss && events.length) {
+    layers.push(new deck.ScatterplotLayer({
+      id: 'near-misses',
+      data: events,
+      getPosition: d => d.midpoint?.coordinates ?? [0, 0],
+      getRadius: 9000,
+      getFillColor: d => d.severity === 'LOSS_OF_SEPARATION'
+        ? [248, 81, 73, 230]
+        : [227, 179, 65, 210],
+      radiusMinPixels: 4, radiusMaxPixels: 18,
+      stroked: true,
+      getLineColor: [255, 255, 255, 100],
+      lineWidthMinPixels: 1,
+      pickable: true,
+      onHover: ({ object, x, y }) =>
+        object ? showTooltip(x, y, ttEvent(object)) : hideTooltip(),
+    }));
+  }
+
+  // ③ Live aircraft (top layer)
+  if (vis.aircraft && aircraft.features.length) {
+    layers.push(new deck.ScatterplotLayer({
+      id: 'aircraft',
+      data: aircraft.features,
+      getPosition: d => d.geometry.coordinates,
+      getRadius: 5000,
+      getFillColor: d => {
+        // Colour aircraft by altitude: low=steel-blue, high=white-blue
+        const t = Math.min((d.properties.altitude_ft || 0) / 40000, 1);
+        return [Math.round(88 + t * 130), Math.round(166 + t * 60), 255, 210];
+      },
+      radiusMinPixels: 2, radiusMaxPixels: 7,
+      pickable: true,
+      onHover: ({ object, x, y }) =>
+        object ? showTooltip(x, y, ttAircraft(object.properties)) : hideTooltip(),
+    }));
+  }
+
+  return layers;
+}
+
+function redraw() {
+  overlay?.setProps({ layers: buildLayers() });
+}
+
+// ── Data polling ──────────────────────────────────────────────────────────────
+async function get(path) {
+  const r = await fetch(API + path);
+  if (!r.ok) throw new Error(r.status);
+  return r.json();
+}
+
+async function pollTraffic() {
+  try {
+    aircraft = await get('/api/live-traffic');
+    $lastUpdate.textContent = 'Updated ' + new Date().toLocaleTimeString();
+    redraw();
+  } catch (_) {}
+}
+
+async function pollEvents() {
+  try {
+    const res = await get('/api/near-misses?hours=24&limit=500');
+    events = res.events || [];
+    redraw();
+  } catch (_) {}
+}
+
+async function pollHotspots() {
+  try {
+    hotspots = await get('/api/hotspots?min_events=1');
+    document.getElementById('s-hotspots').textContent =
+      (hotspots.features || []).length;
+    redraw();
+  } catch (_) {}
+}
+
+async function pollStats() {
+  try {
+    const s = await get('/api/stats');
+    document.getElementById('s-aircraft').textContent = s.live_aircraft_count ?? '–';
+    document.getElementById('s-hour').textContent     = s.events_last_hour    ?? '–';
+    document.getElementById('s-24h').textContent      = s.events_last_24h     ?? '–';
+    const sev = s.severity_breakdown || {};
+    document.getElementById('s-los').textContent  = sev.LOSS_OF_SEPARATION ?? 0;
+    document.getElementById('s-nm').textContent   = sev.NEAR_MISS          ?? 0;
+    document.getElementById('s-prox').textContent = sev.PROXIMITY          ?? 0;
+  } catch (_) {}
+}
+
+// ── WebSocket alert feed ──────────────────────────────────────────────────────
+function pushAlert(raw) {
+  let d;
+  try { d = JSON.parse(raw); } catch { d = { severity: 'ALERT' }; }
+
+  const sev  = (d.severity || 'ALERT').replace(/_/g, ' ');
+  const a    = d.icao24_a || '';
+  const b    = d.icao24_b || '';
+  const dist = d.horizontal_nm != null ? d.horizontal_nm.toFixed(1) + ' NM' : '';
+
+  const chip = document.createElement('div');
+  chip.className = 'alert-chip';
+  chip.textContent = `⚠ ${sev}: ${a} ↔ ${b}${dist ? '  ' + dist : ''}`;
+  $alertFeed.prepend(chip);
+  while ($alertFeed.children.length > MAX_ALERTS) $alertFeed.lastChild.remove();
+  setTimeout(() => chip.remove(), 8000);
+}
+
+function connectWS() {
+  let ws;
+  try { ws = new WebSocket(WS); } catch { return; }
+  ws.onopen    = ()  => $wsDot.className = 'dot';
+  ws.onmessage = (e) => pushAlert(e.data);
+  ws.onclose   = ()  => { $wsDot.className = 'dot off'; setTimeout(connectWS, 5000); };
+  ws.onerror   = ()  => ws.close();
+}
+
+// ── Layer toggle checkboxes ───────────────────────────────────────────────────
+[['t-aircraft','aircraft'], ['t-nearmiss','nearmiss'], ['t-hotspots','hotspots']].forEach(
+  ([id, key]) => document.getElementById(id).addEventListener('change', e => {
+    vis[key] = e.target.checked; redraw();
+  })
+);
+
+// ── Map + Deck.gl init ────────────────────────────────────────────────────────
+const map = new maplibregl.Map({
+  container: 'map',
+  style: 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json',
+  center: [-98.35, 39.5],  // continental US
+  zoom: 4,
+});
+
+map.on('load', () => {
+  overlay = new deck.MapboxOverlay({ layers: [] });
+  map.addControl(overlay);
+
+  // Initial data load
+  pollTraffic();
+  pollEvents();
+  pollHotspots();
+  pollStats();
+
+  // Polling
+  setInterval(pollTraffic,  POLL_MS.traffic);
+  setInterval(pollEvents,   POLL_MS.events);
+  setInterval(pollHotspots, POLL_MS.hotspots);
+  setInterval(pollStats,    POLL_MS.stats);
+
+  // Real-time alerts
+  connectWS();
+});
+</script>
+</body>
+</html>
